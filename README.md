@@ -3,7 +3,7 @@
 Simple autograd engine with Vulkan.
 
 ```bash
-gcc -shared -o libtensor.so -fPIC tensor.cpp cpu.cpp
+g++ -g -shared -o libtensor.so -fPIC tensor.cpp cpu.cpp vulkan.cpp -lMoltenVK -std=c++17
 ```
 
 References:

@@ -1,6 +1,8 @@
 #ifndef TENSOR_H
 #define TENSOR_H
 
+#include <vulkan/vulkan.h>
+
 typedef struct {
     float* data;
     int* strides;
@@ -8,6 +10,10 @@ typedef struct {
     int ndim;
     int size;
     char* device;
+
+    // vulkan
+    VkBuffer buffer;
+    VkDeviceMemory memory;
 } Tensor;
 
 extern "C" {

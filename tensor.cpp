@@ -4,7 +4,7 @@
 #include <math.h>
 #include "tensor.h"
 #include "cpu.h"
-
+#include "vulkan.h"
 
 
 extern "C" {
@@ -18,6 +18,14 @@ extern "C" {
         tensor->data = data;
         tensor->shape = shape;
         tensor->ndim = ndim;
+
+        tensor->device = (char*)malloc(strlen(device) + 1);
+        if (device != NULL) {
+            strcpy(tensor->device, device);
+        } else {
+            fprintf(stderr, "Memory allocation failed\n");
+            exit(-1);
+        }
 
         tensor->size = 1;
         for (int i = 0; i < ndim; i++) {
@@ -48,6 +56,16 @@ extern "C" {
         result = tensor->data[index];
 
         return result;
+    }
+
+    void to_device(Tensor* tensor, char* target_device) {
+        // printf("Transferring tensor from %s to %s\n", tensor->device, target_device);
+        if ((strcmp(target_device, "vulkan") == 0) && (strcmp(tensor->device, "cpu") == 0)) {
+            cpu_to_vulkan(tensor);
+        }
+        else if ((strcmp(target_device, "cpu") == 0) && (strcmp(tensor->device, "vulkan") == 0)) {
+            vulkan_to_cpu(tensor);
+        }
     }
 
     Tensor* add_tensor(Tensor* tensor1, Tensor* tensor2) {
