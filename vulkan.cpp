@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 // Singleton function to initialize and return the Vulkan context
 VulkanContext* getVulkanContext() {
@@ -13,6 +14,7 @@ VulkanContext* getVulkanContext() {
         context.physicalDevice = pickPhysicalDevice(context.instance);
         context.device = createLogicalDevice(context.physicalDevice, &context.queue);
         context.commandPool = createCommandPool(context.device, 0);  // Assuming queueFamilyIndex is 0
+        context.descriptorPool = createDescriptorPool(context.device);  // Create descriptor pool
         initialized = 1;
     }
 
@@ -130,6 +132,212 @@ void vulkan_to_cpu(Tensor* tensor) {
     strcpy(tensor->device, device_str);
 
     printf("Successfully transferred tensor to: %s\n", tensor->device);
+}
+
+
+void add_tensor_vulkan(Tensor* tensor1, Tensor* tensor2, Tensor* result_tensor) {
+    VulkanContext* context = getVulkanContext();
+    // Step 1: Ensure tensors are on Vulkan
+    if (strcmp(tensor1->device, "vulkan") != 0 || strcmp(tensor2->device, "vulkan") != 0) {
+        fprintf(stderr, "Tensors must be on Vulkan to perform addition\n");
+        return;
+    }
+
+    // Step 2: Load the compute shader
+    VkShaderModule shaderModule = loadShaderModule(context->device, "add_tensor.spv");
+
+    // Step 3: Create descriptor sets for the buffers
+    VkDescriptorSetLayoutBinding bindings[3] = {};
+    
+    // Binding 0: tensor1
+    bindings[0].binding = 0;
+    bindings[0].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[0].descriptorCount = 1;
+    bindings[0].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[0].pImmutableSamplers = nullptr;
+
+    // Binding 1: tensor2
+    bindings[1].binding = 1;
+    bindings[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[1].descriptorCount = 1;
+    bindings[1].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[1].pImmutableSamplers = nullptr;
+
+    // Binding 2: result_tensor
+    bindings[2].binding = 2;
+    bindings[2].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    bindings[2].descriptorCount = 1;
+    bindings[2].stageFlags = VK_SHADER_STAGE_COMPUTE_BIT;
+    bindings[2].pImmutableSamplers = nullptr;
+
+    // Step 4: Create the descriptor set layout
+    VkDescriptorSetLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    layoutInfo.bindingCount = 3;
+    layoutInfo.pBindings = bindings;
+
+    VkDescriptorSetLayout descriptorSetLayout;
+    vkCreateDescriptorSetLayout(context->device, &layoutInfo, nullptr, &descriptorSetLayout);
+
+    // Step 5: Create the pipeline layout
+    VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+    pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutInfo.setLayoutCount = 1;
+    pipelineLayoutInfo.pSetLayouts = &descriptorSetLayout;
+
+    VkPipelineLayout pipelineLayout;
+    vkCreatePipelineLayout(context->device, &pipelineLayoutInfo, nullptr, &pipelineLayout);
+
+    // Step 6: Create the compute pipeline
+    VkComputePipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO;
+    pipelineInfo.stage.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    pipelineInfo.stage.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+    pipelineInfo.stage.module = shaderModule;
+    pipelineInfo.stage.pName = "main";  // Entry point in shader
+    pipelineInfo.layout = pipelineLayout;
+
+    VkPipeline computePipeline;
+    vkCreateComputePipelines(context->device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &computePipeline);
+
+    // Step 7: Create descriptor sets and allocate memory for them
+    VkDescriptorSet descriptorSet;
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = context->descriptorPool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &descriptorSetLayout;
+
+    vkAllocateDescriptorSets(context->device, &allocInfo, &descriptorSet);
+
+    // Step 8: Update descriptor sets with the buffers (tensor1, tensor2, result)
+    VkDescriptorBufferInfo bufferInfos[3] = {};
+    bufferInfos[0].buffer = tensor1->buffer;
+    bufferInfos[0].offset = 0;
+    bufferInfos[0].range = VK_WHOLE_SIZE;
+
+    bufferInfos[1].buffer = tensor2->buffer;
+    bufferInfos[1].offset = 0;
+    bufferInfos[1].range = VK_WHOLE_SIZE;
+
+    bufferInfos[2].buffer = result_tensor->buffer;
+    bufferInfos[2].offset = 0;
+    bufferInfos[2].range = VK_WHOLE_SIZE;
+
+    VkWriteDescriptorSet descriptorWrites[3] = {};
+    for (int i = 0; i < 3; i++) {
+        descriptorWrites[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+        descriptorWrites[i].dstSet = descriptorSet;
+        descriptorWrites[i].dstBinding = i;
+        descriptorWrites[i].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+        descriptorWrites[i].descriptorCount = 1;
+        descriptorWrites[i].pBufferInfo = &bufferInfos[i];
+    }
+
+    vkUpdateDescriptorSets(context->device, 3, descriptorWrites, 0, nullptr);
+
+    // Step 9: Record commands to dispatch the compute shader
+    VkCommandBuffer commandBuffer = beginSingleTimeCommands(context);
+
+    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, computePipeline);
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_COMPUTE, pipelineLayout, 0, 1, &descriptorSet, 0, nullptr);
+
+    // Dispatch the compute shader with enough workgroups to cover all elements
+    vkCmdDispatch(commandBuffer, (uint32_t)ceil(tensor1->size / 256.0), 1, 1);
+
+    endSingleTimeCommands(context, commandBuffer);
+
+    // Step 10: Cleanup (pipeline, layout, etc.)
+    vkDestroyPipeline(context->device, computePipeline, nullptr);
+    vkDestroyPipelineLayout(context->device, pipelineLayout, nullptr);
+    vkDestroyDescriptorSetLayout(context->device, descriptorSetLayout, nullptr);
+    vkDestroyShaderModule(context->device, shaderModule, nullptr);
+
+    printf("Summed two tensors");
+}
+
+VkShaderModule loadShaderModule(VkDevice device, const char* filePath) {
+    FILE* file = fopen(filePath, "rb");
+    if (!file) {
+        fprintf(stderr, "Failed to open shader file: %s\n", filePath);
+        return VK_NULL_HANDLE;
+    }
+
+    fseek(file, 0, SEEK_END);
+    size_t fileSize = ftell(file);
+    rewind(file);
+
+    char* buffer = (char*)malloc(fileSize);
+    fread(buffer, 1, fileSize, file);
+    fclose(file);
+
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = fileSize;
+    createInfo.pCode = (uint32_t*)buffer;
+
+    VkShaderModule shaderModule;
+    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create shader module\n");
+        free(buffer);
+        return VK_NULL_HANDLE;
+    }
+
+    free(buffer);
+    return shaderModule;
+}
+
+VkDescriptorPool createDescriptorPool(VkDevice device) {
+    VkDescriptorPoolSize poolSize{};
+    poolSize.type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSize.descriptorCount = 3;  // Number of buffers in use
+
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = 1;
+    poolInfo.pPoolSizes = &poolSize;
+    poolInfo.maxSets = 1;  // Only one descriptor set needed
+
+    VkDescriptorPool descriptorPool;
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create descriptor pool\n");
+        exit(1);
+    }
+
+    return descriptorPool;
+}
+
+VkCommandBuffer beginSingleTimeCommands(VulkanContext* context) {
+    VkCommandBufferAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    allocInfo.commandPool = context->commandPool;
+    allocInfo.commandBufferCount = 1;
+
+    VkCommandBuffer commandBuffer;
+    vkAllocateCommandBuffers(context->device, &allocInfo, &commandBuffer);
+
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+    vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+    return commandBuffer;
+}
+
+void endSingleTimeCommands(VulkanContext* context, VkCommandBuffer commandBuffer) {
+    vkEndCommandBuffer(commandBuffer);
+
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffer;
+
+    vkQueueSubmit(context->queue, 1, &submitInfo, VK_NULL_HANDLE);
+    vkQueueWaitIdle(context->queue);
+
+    vkFreeCommandBuffers(context->device, context->commandPool, 1, &commandBuffer);
 }
 
 

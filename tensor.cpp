@@ -68,33 +68,75 @@ extern "C" {
         }
     }
 
-    Tensor* add_tensor(Tensor* tensor1, Tensor* tensor2) {
-        if (tensor1->ndim != tensor2->ndim) {
-            fprintf(stderr, "Tensors must have the same number of dimensions %d and %d for addition\n", tensor1->ndim, tensor2->ndim);
-            exit(1);
-        }
+ Tensor* add_tensor(Tensor* tensor1, Tensor* tensor2) {
+    if (tensor1->ndim != tensor2->ndim) {
+        fprintf(stderr, "Tensors must have the same number of dimensions %d and %d for addition\n", tensor1->ndim, tensor2->ndim);
+        exit(1);
+    }
 
-        int ndim = tensor1->ndim;
-        int* shape = (int*)malloc(ndim * sizeof(int));
-        if (shape == NULL) {
-            fprintf(stderr, "Memory allocation failed\n");
-            exit(1);
-        }
+    if (strcmp(tensor1->device, tensor2->device) != 0) {
+        fprintf(stderr, "Tensors must be on the same device: %s and %s\n", tensor1->device, tensor2->device);
+        exit(1);
+    }
 
-        for (int i = 0; i < ndim; i++) {
+    char* device = (char*)malloc(strlen(tensor1->device) + 1);
+    if (device != NULL) {
+        strcpy(device, tensor1->device);
+    } else {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(-1);
+    }
+    
+    int ndim = tensor1->ndim;
+    int* shape = (int*)malloc(ndim * sizeof(int));
+    if (shape == NULL) {
+        fprintf(stderr, "Memory allocation failed\n");
+        exit(1);
+    }
+
+    for (int i = 0; i < ndim; i++) {
         if (tensor1->shape[i] != tensor2->shape[i]) {
-                fprintf(stderr, "Tensors must have the same shape %d and %d at index %d for addition\n", tensor1->shape[i], tensor2->shape[i], i);
-                exit(1);
-            }
-            shape[i] = tensor1->shape[i];
-        }        
+            fprintf(stderr, "Tensors must have the same shape %d and %d at index %d for addition\n", tensor1->shape[i], tensor2->shape[i], i);
+            exit(1);
+        }
+        shape[i] = tensor1->shape[i];
+    }
+
+    if (strcmp(tensor1->device, "vulkan") == 0) {
+        // Step 1: Retrieve the Vulkan context
+        VulkanContext* context = getVulkanContext();
+
+        // Step 2: Create a result buffer for Vulkan
+        VkBuffer resultBuffer;
+        VkDeviceMemory resultMemory;
+        createBuffer(context->device, context->physicalDevice, tensor1->size * sizeof(float),
+                     VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, 
+                     VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, resultBuffer, resultMemory);
+
+        // Step 3: Create a result tensor and associate it with the result buffer
+        Tensor* result_tensor = (Tensor*)malloc(sizeof(Tensor));
+        result_tensor->buffer = resultBuffer;
+        result_tensor->memory = resultMemory;
+        result_tensor->size = tensor1->size;
+        result_tensor->ndim = ndim;
+        result_tensor->shape = shape;
+        result_tensor->device = device;
+
+        // Step 4: Call the Vulkan tensor addition function
+        add_tensor_vulkan(tensor1, tensor2, result_tensor);
+
+        return result_tensor;
+    } 
+    else {
+        // CPU-based tensor addition
         float* result_data = (float*)malloc(tensor1->size * sizeof(float));
         if (result_data == NULL) {
             fprintf(stderr, "Memory allocation failed\n");
             exit(1);
         }
         add_tensor_cpu(tensor1, tensor2, result_data);
-        
-        return create_tensor(result_data, shape, ndim, tensor1->device);
+        return create_tensor(result_data, shape, ndim, device);
     }
+}
+
 }

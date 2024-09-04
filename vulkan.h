@@ -9,7 +9,10 @@ typedef struct {
     VkDevice device;
     VkQueue queue;
     VkCommandPool commandPool;
+    VkDescriptorPool descriptorPool;
 } VulkanContext;
+
+void add_tensor_vulkan(Tensor* tensor1, Tensor* tensor2, Tensor* result_data);
 
 // Function declarations
 VulkanContext* getVulkanContext();  // Returns a pointer to the global Vulkan context
@@ -25,5 +28,9 @@ VkInstance createInstance();
 VkPhysicalDevice pickPhysicalDevice(VkInstance instance);
 VkDevice createLogicalDevice(VkPhysicalDevice physicalDevice, VkQueue* queue);
 VkCommandPool createCommandPool(VkDevice device, uint32_t queueFamilyIndex);
+VkDescriptorPool createDescriptorPool(VkDevice device);
+VkCommandBuffer beginSingleTimeCommands(VulkanContext* context);
+void endSingleTimeCommands(VulkanContext* context, VkCommandBuffer commandBuffer);
+VkShaderModule loadShaderModule(VkDevice device, const char* filePath);
 
 #endif /* VULKAN_H */

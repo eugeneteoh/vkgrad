@@ -108,3 +108,25 @@ print(tensor1.device)
 
 tensor1.to("vulkan")
 tensor1.to("cpu")
+
+tensor1.to("vulkan")
+tensor2.to("vulkan")
+tensor3 = tensor1 + tensor2
+tensor3.to("cpu")
+print(tensor3.tensor)
+# print(tensor3[0, 0])
+
+
+def print_data(self):
+    if self.tensor is None:
+        print("Tensor is empty.")
+        return
+
+    # Iterate over the data using the size attribute to know how many elements to print
+    print("Tensor data:")
+    for i in range(self.tensor.contents.size):
+        print(self.tensor.contents.data[i])
+
+
+
+print_data(tensor3)
