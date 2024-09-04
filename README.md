@@ -2,8 +2,8 @@
 
 Simple autograd engine with Vulkan.
 
-```
-gcc -shared -o libtensor.so -fPIC tensor.cpp  
+```bash
+gcc -shared -o libtensor.so -fPIC tensor.cpp cpu.cpp
 ```
 
 References:
