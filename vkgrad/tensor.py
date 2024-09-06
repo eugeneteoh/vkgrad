@@ -1,5 +1,6 @@
 import ctypes
 import os
+from pathlib import Path
 
 
 class CTensor(ctypes.Structure):
@@ -12,8 +13,13 @@ class CTensor(ctypes.Structure):
     ]
 
 class Tensor:
-    os.path.abspath(os.curdir)
-    _C = ctypes.CDLL("libtensor.so")
+    root_dir = Path(__file__).parent.parent
+    so_file_path = next(root_dir.glob('vkgrad*.so'), None)
+
+    if so_file_path is None:
+        raise FileNotFoundError("Shared object file not found.")
+    
+    _C = ctypes.CDLL(so_file_path)
 
     def __init__(self, data=None, device="cpu"):
         if data is None:
