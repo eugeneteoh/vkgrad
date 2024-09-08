@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <iostream>
 
 // Singleton function to initialize and return the Vulkan context
 VulkanContext* getVulkanContext() {
@@ -144,7 +145,7 @@ void add_tensor_vulkan(Tensor* tensor1, Tensor* tensor2, Tensor* result_tensor) 
     }
 
     // Step 2: Load the compute shader
-    VkShaderModule shaderModule = loadShaderModule(context->device, "add_tensor.spv");
+    VkShaderModule shaderModule = loadShaderModule(context->device, "cpp/add_tensor.spv");
 
     // Step 3: Create descriptor sets for the buffers
     VkDescriptorSetLayoutBinding bindings[3] = {};
@@ -436,7 +437,8 @@ uint32_t findMemoryType(VkPhysicalDevice physicalDevice, uint32_t typeFilter, Vk
 }
 
 VkInstance createInstance() {
-    VkApplicationInfo appInfo{};
+    VkApplicationInfo appInfo;
+    memset(&appInfo, 0, sizeof(appInfo));
     appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = "Vulkan Tensor App";
     appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -444,12 +446,24 @@ VkInstance createInstance() {
     appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
     appInfo.apiVersion = VK_API_VERSION_1_0;
 
-    VkInstanceCreateInfo createInfo{};
+    // Instance creation info
+    VkInstanceCreateInfo createInfo;
+    memset(&createInfo, 0, sizeof(createInfo));
     createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
     createInfo.pApplicationInfo = &appInfo;
 
+    // Required extensions
+    const char* requiredExtensions[] = {
+        VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME
+    };
+
+    createInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    createInfo.enabledExtensionCount = sizeof(requiredExtensions) / sizeof(requiredExtensions[0]);
+    createInfo.ppEnabledExtensionNames = requiredExtensions;
+
+    // Instance creation
     VkInstance instance;
-    if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS) {
+    if (vkCreateInstance(&createInfo, NULL, &instance) != VK_SUCCESS) {
         fprintf(stderr, "Failed to create Vulkan instance\n");
         exit(1);
     }

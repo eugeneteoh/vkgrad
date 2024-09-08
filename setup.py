@@ -32,7 +32,7 @@ setup(
             name="vkgrad",
             sources=["cpp/tensor.cpp", "cpp/vulkan.cpp", "cpp/cpu.cpp"],
             language="c++",
-            extra_compile_args=["-std=c++17"],
+            extra_compile_args=["-g", "-std=c++17"],
             extra_link_args=["-lvulkan"],
         )
     ]
