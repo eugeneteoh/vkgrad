@@ -9,19 +9,22 @@ class CustomBuildExt(build_ext):
         super().run()
 
         # Shader compilation
-        shader_src = Path('cpp/add_tensor.comp')  # Path to your shader file
-        shader_out = Path('cpp/add_tensor.spv')   # Output SPIR-V file
+        shader_out = []
+        shader_src = list(Path("cpp").glob("*.comp"))
+        for path in shader_src:
+            shader_out.append(path.with_suffix(".spv"))
         
-        if not shader_out.exists() or shader_src.stat().st_mtime > shader_out.stat().st_mtime:
-            print(f"Compiling {shader_src} to {shader_out}")
-            try:
-                # Run the glslangValidator command to compile the .comp file to .spv
-                subprocess.check_call([
-                    'glslangValidator', '-V', str(shader_src), '-o', str(shader_out)
-                ])
-            except subprocess.CalledProcessError as e:
-                print(f"Shader compilation failed: {e}")
-                raise
+        for src, out in zip(shader_src, shader_out):
+            if not out.exists() or src.stat().st_mtime > out.stat().st_mtime:
+                print(f"Compiling {src} to {out}")
+                try:
+                    # Run the glslangValidator command to compile the .comp file to .spv
+                    subprocess.check_call([
+                        'glslangValidator', '-V', str(src), '-o', str(out)
+                    ])
+                except subprocess.CalledProcessError as e:
+                    print(f"Shader compilation failed: {e}")
+                    raise
 
 
 setup(
@@ -34,6 +37,9 @@ setup(
             language="c++",
             extra_compile_args=["-g", "-std=c++17"],
             extra_link_args=["-lvulkan"],
-        )
-    ]
+        ),
+    ],
+    cmdclass={
+        'build_ext': CustomBuildExt,  # Override build_ext with custom class
+    },
 )

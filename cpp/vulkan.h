@@ -13,12 +13,14 @@ typedef struct {
 } VulkanContext;
 
 void add_tensor_vulkan(Tensor* tensor1, Tensor* tensor2, Tensor* result_data);
+void sub_tensor_vulkan(Tensor* tensor1, Tensor* tensor2, Tensor* result_data);
 
 // Function declarations
 VulkanContext* getVulkanContext();  // Returns a pointer to the global Vulkan context
 void cpu_to_vulkan(Tensor* tensor);
 void vulkan_to_cpu(Tensor* tensor);
 void cleanup_tensor_vulkan(Tensor* tensor, VulkanContext* context);
+void compute_shader(Tensor* tensor1, Tensor* tensor2, Tensor* result_tensor, const char* shader_path);
 
 // Helper function declarations
 VkResult createBuffer(VkDevice device, VkPhysicalDevice physicalDevice, VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer& buffer, VkDeviceMemory& bufferMemory);

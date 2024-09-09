@@ -92,6 +92,23 @@ class Tensor:
 
         return result_data
 
+    def __sub__(self, other):
+        if self.shape != other.shape:
+            raise ValueError("Tensors must have the same shape for addition") 
+
+        Tensor._C.sub_tensor.argtypes = [ctypes.POINTER(CTensor), ctypes.POINTER(CTensor)]
+        Tensor._C.sub_tensor.restype = ctypes.POINTER(CTensor)
+
+        result_tensor_ptr = Tensor._C.sub_tensor(self.tensor, other.tensor)
+
+        result_data = Tensor()
+        result_data.tensor = result_tensor_ptr
+        result_data.shape = self.shape.copy()
+        result_data.ndim = self.ndim
+        result_data.device = self.device
+
+        return result_data
+
     def to(self, device):
         self.device = device
         self.device_ctype = self.device.encode("utf-8")
@@ -106,6 +123,8 @@ class Tensor:
 tensor1 = Tensor([[1, 2, 3], [3, 2, 1]])
 tensor2 = Tensor([[3, 2, 1], [1, 2, 3]])
 tensor3 = tensor1 + tensor2
+print("hi", tensor1 - tensor2)
+
 
 print(tensor1.shape)
 print(tensor1[0, 0])
@@ -118,7 +137,9 @@ tensor1.to("cpu")
 tensor1.to("vulkan")
 tensor2.to("vulkan")
 tensor3 = tensor1 + tensor2
+tensor4 = tensor1 - tensor2
 tensor3.to("cpu")
+# tensor4.to("cpu")
 print(tensor3.tensor)
 # print(tensor3[0, 0])
 
@@ -136,3 +157,4 @@ def print_data(self):
 
 
 print_data(tensor3)
+print("tensor4", tensor4)

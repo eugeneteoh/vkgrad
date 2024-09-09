@@ -137,15 +137,23 @@ void vulkan_to_cpu(Tensor* tensor) {
 
 
 void add_tensor_vulkan(Tensor* tensor1, Tensor* tensor2, Tensor* result_tensor) {
-    VulkanContext* context = getVulkanContext();
+    compute_shader(tensor1, tensor2, result_tensor, "cpp/add_tensor.spv");
+}
+
+void sub_tensor_vulkan(Tensor* tensor1, Tensor* tensor2, Tensor* result_tensor) {
+    compute_shader(tensor1, tensor2, result_tensor, "cpp/sub_tensor.spv");
+}
+
+void compute_shader(Tensor* tensor1, Tensor* tensor2, Tensor* result_tensor, const char* shader_path) {
+   VulkanContext* context = getVulkanContext();
     // Step 1: Ensure tensors are on Vulkan
     if (strcmp(tensor1->device, "vulkan") != 0 || strcmp(tensor2->device, "vulkan") != 0) {
-        fprintf(stderr, "Tensors must be on Vulkan to perform addition\n");
+        fprintf(stderr, "Tensors must be on Vulkan\n");
         return;
     }
 
     // Step 2: Load the compute shader
-    VkShaderModule shaderModule = loadShaderModule(context->device, "cpp/add_tensor.spv");
+    VkShaderModule shaderModule = loadShaderModule(context->device, shader_path);
 
     // Step 3: Create descriptor sets for the buffers
     VkDescriptorSetLayoutBinding bindings[3] = {};
@@ -253,8 +261,6 @@ void add_tensor_vulkan(Tensor* tensor1, Tensor* tensor2, Tensor* result_tensor) 
     vkDestroyPipelineLayout(context->device, pipelineLayout, nullptr);
     vkDestroyDescriptorSetLayout(context->device, descriptorSetLayout, nullptr);
     vkDestroyShaderModule(context->device, shaderModule, nullptr);
-
-    printf("Summed two tensors");
 }
 
 VkShaderModule loadShaderModule(VkDevice device, const char* filePath) {
